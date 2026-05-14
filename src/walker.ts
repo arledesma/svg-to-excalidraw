@@ -496,19 +496,28 @@ const walkers = {
     }
 
     // Get position and size
-    const x = getNum(el, "x", 0);
-    const y = getNum(el, "y", 0);
+    const rawX = getNum(el, "x", 0);
+    const rawY = getNum(el, "y", 0);
     const fontSize = getNum(el, "font-size", 16);
+    const anchor = get(el, "text-anchor", "start");
 
     // Estimate width and height based on text length and font size
     const avgCharWidth = fontSize * 0.6;
     const width = textContent.length * avgCharWidth;
     const height = fontSize * 1.2;
 
+    // SVG text-anchor defines what the x coordinate refers to:
+    //   start  → x is the left edge
+    //   middle → x is the center
+    //   end    → x is the right edge
+    // Excalidraw positions text at its top-left corner, so adjust.
+    let x = rawX;
+    if (anchor === "middle") x -= width / 2;
+    else if (anchor === "end") x -= width;
+
     const mat = getTransformMatrix(el, groups);
 
-    // Apply transformations if any
-    const m = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1);
+    const m = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, rawY, 0, 1);
     const result = mat4.multiply(mat4.create(), mat, m);
 
     const text: ExcalidrawText = {
@@ -517,7 +526,7 @@ const walkers = {
       text: textContent,
       fontSize,
       x: result[12],
-      y: result[13] - fontSize, // Adjust for baseline
+      y: result[13] - fontSize, // Adjust for SVG baseline → top-left
       width,
       height,
       groupIds: groups.map((g) => g.id),
