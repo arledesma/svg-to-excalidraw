@@ -53,14 +53,9 @@ export function getWithCSS(
 }
 
 function parseStyleAttr(style: string, attr: string): string | null {
-  // Parse inline style attribute like "fill: red; stroke: blue"
-  const match = style.match(new RegExp(`${attr}\\s*:\\s*([^;]+)`));
+  const match = new RegExp(String.raw`${attr}\s*:\s*([^;]+)`).exec(style);
   if (!match) return null;
-
-  // Strip !important and trim
-  let value = match[1].trim();
-  value = value.replace(/\s*!important\s*$/i, '');
-  return value;
+  return match[1].trim().replace(/\s*!important\s*$/i, '');
 }
 
 // SVG absolute unit → px conversion factors (CSS spec: 1in = 96px)
@@ -198,6 +193,33 @@ const attrHandlers: PresAttrHandlers = {
   },
 };
 
+function applyCSSFallbacks(
+  el: Element,
+  exVals: ExPartialElement,
+  cssParser: CSSParser,
+): void {
+  if (!exVals.backgroundColor) {
+    const fill = getWithCSS(el, "fill", cssParser);
+    if (fill) {
+      exVals.backgroundColor = fill === "none" ? "#00000000" : fill;
+    }
+  }
+
+  if (!exVals.strokeColor) {
+    const stroke = getWithCSS(el, "stroke", cssParser);
+    if (stroke) {
+      exVals.strokeColor = stroke;
+    }
+  }
+
+  if (!exVals.strokeWidth) {
+    const widthNum = parseLengthToPx(getWithCSS(el, "stroke-width", cssParser));
+    if (!Number.isNaN(widthNum)) {
+      exVals.strokeWidth = widthNum;
+    }
+  }
+}
+
 // Presentation Attributes for SVG Elements:
 // https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/Presentation
 export function presAttrsToElementValues(
@@ -214,29 +236,9 @@ export function presAttrsToElementValues(
     }
   });
 
-  // Also check CSS for fill and stroke if not found in attributes
-  if (cssParser && !exVals.backgroundColor) {
-    const fill = getWithCSS(el, "fill", cssParser);
-    if (fill && fill !== "") {
-      exVals.backgroundColor = fill === "none" ? "#00000000" : fill;
-    }
-  }
-
-  if (cssParser && !exVals.strokeColor) {
-    const stroke = getWithCSS(el, "stroke", cssParser);
-    if (stroke && stroke !== "") {
-      exVals.strokeColor = stroke;
-    }
-  }
-
-  if (cssParser && !exVals.strokeWidth) {
-    const strokeWidth = getWithCSS(el, "stroke-width", cssParser);
-    if (strokeWidth && strokeWidth !== "") {
-      const widthNum = parseLengthToPx(strokeWidth);
-      if (!Number.isNaN(widthNum)) {
-        exVals.strokeWidth = widthNum;
-      }
-    }
+  // Fill in any properties not set by direct attributes using CSS rules
+  if (cssParser) {
+    applyCSSFallbacks(el, exVals, cssParser);
   }
 
   return exVals;
