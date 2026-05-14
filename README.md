@@ -7,15 +7,18 @@ Particularly useful for recovering editable diagrams from Excalidraw SVG exports
 ## CLI Usage
 
 ```bash
-# Convert an SVG file to .excalidraw format
-bun cli.ts input.svg output.excalidraw
+# Build first (one-time)
+npm install
+npm run build
 
-# Or via the package script
+# Convert an SVG file to .excalidraw format
 npm run convert -- input.svg output.excalidraw
 
 # If output is omitted, writes <input>.excalidraw alongside the input
-bun cli.ts diagram.svg
+npm run convert -- diagram.svg
 ```
+
+Any package manager works — `npm`, `yarn`, `pnpm`, or `bun`.
 
 ### Supported elements
 
@@ -25,17 +28,6 @@ bun cli.ts diagram.svg
 - Groups: `g` (with transform accumulation)
 - References: `use` / `xlink:href`
 - CSS: embedded `<style>` rules, inline styles, and direct attributes
-
-### Prerequisites
-
-The CLI requires [Bun](https://bun.sh), [Node.js](https://nodejs.org) with [tsx](https://github.com/privatenumber/tsx), or any runtime that supports TypeScript execution.
-
-The library must be built before running the CLI:
-
-```bash
-npm install
-npm run build
-```
 
 ## Library Usage
 
@@ -56,20 +48,12 @@ if (hasErrors) {
 ## Development
 
 ```bash
-# Install dependencies
 npm install
-
-# Build the UMD bundle
-npm run build
-
-# Build and watch
-npm run build:watch
-
-# Type check
-npm run typecheck
-
-# Lint
-npm run lint
+npm run build        # Build CJS + ESM bundles via esbuild
+npm run build:watch  # Build and watch for changes
+npm run typecheck    # Type check
+npm run lint         # Lint
+npm run format:check # Check formatting
 ```
 
 ## Contributing
