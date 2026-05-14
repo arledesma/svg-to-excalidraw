@@ -152,7 +152,7 @@ const attrHandlers: PresAttrHandlers = {
 
     // Convert "none" to transparent
     if (strokeColor === "none") {
-      exVals.strokeColor = "#00000000";
+      exVals.strokeColor = "transparent";
     } else {
       exVals.strokeColor = has(el, "stroke-opacity")
         ? hexWithAlpha(strokeColor, getNum(el, "stroke-opacity"))
@@ -163,7 +163,7 @@ const attrHandlers: PresAttrHandlers = {
   "stroke-opacity": ({ el, exVals, cssParser }) => {
     const stroke = getWithCSS(el, "stroke", cssParser, "#000000");
     if (stroke === "none") {
-      exVals.strokeColor = "#00000000";
+      exVals.strokeColor = "transparent";
     } else {
       exVals.strokeColor = hexWithAlpha(stroke, getNum(el, "stroke-opacity"));
     }
@@ -178,7 +178,7 @@ const attrHandlers: PresAttrHandlers = {
   fill: ({ el, exVals, cssParser }) => {
     const fill = getWithCSS(el, "fill", cssParser);
 
-    exVals.backgroundColor = fill === "none" ? "#00000000" : fill;
+    exVals.backgroundColor = fill === "none" ? "transparent" : fill;
   },
 
   "fill-opacity": ({ el, exVals, cssParser }) => {
@@ -201,7 +201,7 @@ function applyCSSFallbacks(
   if (!exVals.backgroundColor) {
     const fill = getWithCSS(el, "fill", cssParser);
     if (fill) {
-      exVals.backgroundColor = fill === "none" ? "#00000000" : fill;
+      exVals.backgroundColor = fill === "none" ? "transparent" : fill;
     }
   }
 

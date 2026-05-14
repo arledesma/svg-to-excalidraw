@@ -1,5 +1,5 @@
 import { mat4 } from "gl-matrix";
-import { dimensionsFromPoints } from "./utils";
+import { dimensionsFromPoints, randomId, getWindingOrder } from "./utils";
 import ExcalidrawScene from "./elements/ExcalidrawScene";
 import Group, { getGroupAttrs } from "./elements/Group";
 import {
@@ -26,10 +26,9 @@ import {
 } from "./attributes";
 import { getTransformMatrix, transformPoints } from "./transform";
 import { pointsOnPath } from "points-on-path";
-import { randomId, getWindingOrder } from "./utils";
-import { getCSSParser, CSSParser } from "./css-parser";
+import type { CSSParser } from "./css-parser";
 
-const SUPPORTED_TAGS = [
+const SUPPORTED_TAGS = new Set([
   "svg",
   "path",
   "g",
@@ -41,10 +40,10 @@ const SUPPORTED_TAGS = [
   "polygon",
   "text",
   "foreignObject",
-];
+]);
 
 const nodeValidator = (node: Element): number => {
-  if (SUPPORTED_TAGS.includes(node.tagName)) {
+  if (SUPPORTED_TAGS.has(node.tagName)) {
     return NodeFilter.FILTER_ACCEPT;
   }
 
@@ -92,15 +91,15 @@ const presAttrs = (
   };
 };
 
-const skippedUseAttrs = ["id"];
-const allwaysPassedUseAttrs = [
+const skippedUseAttrs = new Set(["id"]);
+const alwaysPassedUseAttrs = new Set([
   "x",
   "y",
   "width",
   "height",
   "href",
   "xlink:href",
-];
+]);
 
 /*
   "Most attributes on use do not override those already on the element
@@ -119,14 +118,14 @@ const allwaysPassedUseAttrs = [
 */
 const getDefElWithCorrectAttrs = (defEl: Element, useEl: Element): Element => {
   const finalEl = [...useEl.attributes].reduce((el, attr) => {
-    if (skippedUseAttrs.includes(attr.value)) {
+    if (skippedUseAttrs.has(attr.value)) {
       return el;
     }
 
     // Does defEl have the attr? If so, use it, else use the useEl attr
     if (
       !defEl.hasAttribute(attr.name) ||
-      allwaysPassedUseAttrs.includes(attr.name)
+      alwaysPassedUseAttrs.has(attr.name)
     ) {
       el.setAttribute(attr.name, useEl.getAttribute(attr.name) || "");
     }
@@ -394,7 +393,7 @@ const walkers = {
     let localGroup = randomId();
 
     switch (fillRule) {
-      case "nonzero":
+      case "nonzero": {
         let initialWindingOrder = "clockwise";
 
         elements = points.map((pointArr, idx): ExcalidrawDraw => {
@@ -425,7 +424,7 @@ const walkers = {
           // Only set transparent stroke if this is a filled path (has fill and no visible stroke)
           const hasFill = fillColor && fillColor !== "none";
           const hasVisibleStroke = has(el, "stroke") && get(el, "stroke") !== "none" ||
-                                   (attrs.strokeColor && attrs.strokeColor !== "#00000000");
+                                   (attrs.strokeColor && attrs.strokeColor !== "transparent");
 
           // Default stroke color for paths without fill
           const defaultStroke = hasFill ? {} : { strokeColor: attrs.strokeColor || "#333333", strokeWidth: attrs.strokeWidth || 1 };
@@ -433,10 +432,10 @@ const walkers = {
           return {
             ...createExDraw(),
             // Only make stroke transparent if this is clearly a filled path with no stroke
-            ...(hasFill && !hasVisibleStroke ? { strokeWidth: 0, strokeColor: "#00000000" } : defaultStroke),
+            ...(hasFill && !hasVisibleStroke ? { strokeWidth: 0, strokeColor: "transparent" } : defaultStroke),
             ...attrs,
             points: relativePoints,
-            backgroundColor: backgroundColor !== "none" ? backgroundColor : "#00000000",
+            backgroundColor: backgroundColor === "none" ? "transparent" : backgroundColor,
             width,
             height,
             x: x + getNum(el, "x", 0),
@@ -445,6 +444,7 @@ const walkers = {
           };
         });
         break;
+      }
       case "evenodd":
         elements = points.map((pointArr, idx): ExcalidrawDraw => {
           const tPoints: Point[] = transformPoints(pointArr, mat4.clone(mat));
@@ -536,7 +536,7 @@ const walkers = {
   },
 
   foreignObject: (args: WalkerArgs) => {
-    const { tw, scene, groups, cssParser } = args;
+    const { tw, scene, groups } = args;
     const el = tw.currentNode as Element;
 
     // Extract text from HTML content
