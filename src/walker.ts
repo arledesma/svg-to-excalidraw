@@ -57,6 +57,21 @@ export function createTreeWalker(dom: Node): TreeWalker {
   });
 }
 
+/** Advance to the next sibling, skipping descendants of the current node.
+ *  Polyfills TreeWalker.nextSibling() for DOM implementations (e.g.
+ *  linkedom) that only provide nextNode(). */
+function nextSiblingOf(tw: TreeWalker): Node | null {
+  if (typeof tw.nextSibling === "function") {
+    return tw.nextSibling();
+  }
+  const current = tw.currentNode;
+  let next = tw.nextNode();
+  while (next && current.contains(next)) {
+    next = tw.nextNode();
+  }
+  return next;
+}
+
 type WalkerArgs = {
   root: Document;
   tw: TreeWalker;
@@ -135,7 +150,7 @@ const walkers = {
 
     walk(nextArgs, nextArgs.tw.nextNode());
 
-    walk(args, args.tw.nextSibling());
+    walk(args, nextSiblingOf(args.tw));
   },
 
   use: (args: WalkerArgs) => {
@@ -568,5 +583,11 @@ export function walk(args: WalkerArgs, nextNode: Node | null): void {
   const nodeName = nextNode.nodeName as keyof typeof walkers;
   if (walkers[nodeName]) {
     walkers[nodeName](args);
+  } else {
+    // Skip unrecognized nodes AND their entire subtree (e.g. mask, defs,
+    // symbol, style, metadata). Without this, DOM implementations that
+    // don't enforce the TreeWalker filter would descend into non-visual
+    // containers and process their children as visible elements.
+    walk(args, nextSiblingOf(args.tw));
   }
 }

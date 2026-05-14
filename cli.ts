@@ -11,7 +11,7 @@
  * If output path is omitted, writes to <input-basename>.excalidraw in the
  * current directory.
  */
-import { JSDOM } from "jsdom";
+import { parseHTML, DOMParser, NodeFilter } from "linkedom";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve, basename, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,7 +32,7 @@ type ExcalidrawElement =
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// ── Minimal DOMMatrix polyfill (jsdom lacks it) ─────────────────────────
+// ── Minimal DOMMatrix polyfill (linkedom doesn't provide it) ────────────
 class DOMMatrixPolyfill {
   m: Float32Array;
   constructor(init?: string | number[]) {
@@ -46,7 +46,7 @@ class DOMMatrixPolyfill {
     const S = String.raw`[\s,]+`;
     const matMatch = new RegExp(String.raw`matrix\(\s*(${N})${S}(${N})${S}(${N})${S}(${N})${S}(${N})${S}(${N})\s*\)`).exec(css);
     if (matMatch) {
-      const [, a, b, c, d, e, f] = matMatch.map(Number);
+      const [, a, b, c, d, e, f] = matMatch.map(Number.parseFloat);
       this.m[0] = a; this.m[1] = b; this.m[4] = c;
       this.m[5] = d; this.m[12] = e; this.m[13] = f;
       return;
@@ -55,7 +55,7 @@ class DOMMatrixPolyfill {
     let funcMatch: RegExpExecArray | null;
     while ((funcMatch = funcRe.exec(css)) !== null) {
       const name = funcMatch[1];
-      const args = funcMatch[2].split(/[\s,]+/).map(Number);
+      const args = funcMatch[2].split(/[\s,]+/).map(Number.parseFloat);
       if (name === "translate") {
         this.m[12] += args[0] || 0;
         this.m[13] += args[1] || 0;
@@ -78,20 +78,16 @@ class DOMMatrixPolyfill {
   toFloat32Array(): Float32Array { return this.m; }
 }
 
-// ── Bootstrap jsdom with globals ─────────────────────────────────────────
-const dom = new JSDOM("<!DOCTYPE html><html><body></body></html>", {
-  url: "https://localhost",
-  pretendToBeVisual: true,
-});
-const win = dom.window as any;
+// ── Bootstrap linkedom globals for the UMD bundle ───────────────────────
+const { document: doc, window: win } = parseHTML("<!DOCTYPE html><html><body></body></html>");
 (globalThis as any).window = win;
-(globalThis as any).document = win.document;
+(globalThis as any).document = doc;
 (globalThis as any).self = win;
-(globalThis as any).DOMParser = win.DOMParser;
-(globalThis as any).NodeFilter = win.NodeFilter;
-(globalThis as any).navigator = win.navigator;
+(globalThis as any).DOMParser = DOMParser;
+(globalThis as any).NodeFilter = NodeFilter;
+(globalThis as any).navigator = (win as any).navigator ?? {};
 (globalThis as any).DOMMatrix = DOMMatrixPolyfill;
-win.DOMMatrix = DOMMatrixPolyfill;
+(win as any).DOMMatrix = DOMMatrixPolyfill;
 
 // ── Load the svg-to-excalidraw UMD bundle ────────────────────────────────
 const bundlePath = resolve(__dirname, "dist/bundle.js");
@@ -100,11 +96,15 @@ if (!existsSync(bundlePath)) {
   console.error(`  NODE_OPTIONS=--openssl-legacy-provider bunx webpack --config webpack.config.js`);
   process.exit(1);
 }
-const bundleCode = readFileSync(bundlePath, "utf-8");
-try { win.eval(bundleCode); } catch { /* bundle self-registers on win */ }
-const lib = win["svg-to-excalidraw"];
-const convert: ((svg: string) => { hasErrors: boolean; content: { elements: ExcalidrawElement[] } | null }) | undefined =
-  lib?.default?.convert ?? lib?.convert;
+
+type ConvertFn = (svg: string) => {
+  hasErrors: boolean;
+  content: { elements: ExcalidrawElement[] } | null;
+};
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const lib = require(bundlePath) as { default?: { convert?: ConvertFn }; convert?: ConvertFn };
+const convert: ConvertFn | undefined = lib.default?.convert ?? lib.convert;
 
 // ── CLI argument handling ────────────────────────────────────────────────
 const args = process.argv.slice(2);
