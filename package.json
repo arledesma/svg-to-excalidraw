@@ -4,16 +4,16 @@
   "description": "Convert SVG to Excalidraw’s file format",
   "main": "dist/bundle.js",
   "files": [
-    "dist/bundle.js",
+    "dist/",
     "svg-to-excalidraw.d.ts"
   ],
   "types": "svg-to-excalidraw.d.ts",
   "bin": {
-    "svg-to-excalidraw": "cli.ts"
+    "svg-to-excalidraw": "dist/cli.js"
   },
   "scripts": {
     "convert": "tsx cli.ts",
-    "build": "esbuild src/index.ts --bundle --format=cjs --outfile=dist/bundle.js --platform=browser && esbuild src/index.ts --bundle --format=esm --outfile=dist/esm-bundle.js --platform=browser",
+    "build": "esbuild src/index.ts --bundle --format=cjs --outfile=dist/bundle.js --platform=browser && esbuild src/index.ts --bundle --format=esm --outfile=dist/esm-bundle.js --platform=browser && esbuild cli.ts --bundle --format=cjs --outfile=dist/cli.js --platform=node --banner:js='#!/usr/bin/env node'",
     "build:watch": "esbuild src/index.ts --bundle --format=cjs --outfile=dist/bundle.js --platform=browser --watch",
     "clean": "rimraf dist",
     "lint": "eslint .",

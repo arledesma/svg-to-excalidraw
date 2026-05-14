@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 /**
  * svg-to-excalidraw CLI
  *
@@ -13,11 +12,7 @@
  */
 import { parseHTML, DOMParser, NodeFilter } from "linkedom";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { createRequire } from "node:module";
 import { resolve, basename, dirname, extname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const require = createRequire(import.meta.url);
 import type {
   ExcalidrawRectangle,
   ExcalidrawEllipse,
@@ -33,8 +28,6 @@ type ExcalidrawElement =
   | ExcalidrawDraw
   | ExcalidrawText;
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
 // ── Bootstrap linkedom globals for the UMD bundle ───────────────────────
 // The library uses DOMParser, document.createTreeWalker, and NodeFilter as
 // browser globals. linkedom provides these. DOMMatrix is no longer needed —
@@ -45,13 +38,15 @@ const { document: doc, window: win } = parseHTML("<!DOCTYPE html><html><body></b
 (globalThis as any).self = win;
 (globalThis as any).DOMParser = DOMParser;
 (globalThis as any).NodeFilter = NodeFilter;
-(globalThis as any).navigator = (win as any).navigator ?? {};
 
 // ── Load the svg-to-excalidraw UMD bundle ────────────────────────────────
-const bundlePath = resolve(__dirname, "dist/bundle.js");
+// When running from source: __dirname is project root → dist/bundle.js
+// When running compiled:    __dirname is dist/        → bundle.js
+const bundlePath = existsSync(resolve(__dirname, "bundle.js"))
+  ? resolve(__dirname, "bundle.js")
+  : resolve(__dirname, "dist/bundle.js");
 if (!existsSync(bundlePath)) {
-  console.error(`Bundle not found at ${bundlePath}. Run the build first:`);
-  console.error(`  NODE_OPTIONS=--openssl-legacy-provider bunx webpack --config webpack.config.js`);
+  console.error(`Bundle not found. Run the build first: npm run build`);
   process.exit(1);
 }
 
