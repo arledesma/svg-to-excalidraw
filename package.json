@@ -43,6 +43,7 @@
     "@excalidraw/eslint-config": "1.0.1",
     "@excalidraw/prettier-config": "1.0.2",
     "@types/chroma-js": "^2.1.3",
+    "@types/jsdom": "^28.0.3",
     "@typescript-eslint/eslint-plugin": "4.31.0",
     "@typescript-eslint/parser": "4.31.0",
     "babel-loader": "^8.2.2",

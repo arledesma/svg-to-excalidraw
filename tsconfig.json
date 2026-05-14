@@ -9,6 +9,6 @@
     "strict": true,
     "esModuleInterop": true
   },
-  "include": ["src", "svg-to-excalidraw.d.ts"],
+  "include": ["src", "svg-to-excalidraw.d.ts", "cli.ts"],
   "exclude": ["src/test"]
 }

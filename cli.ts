@@ -12,8 +12,25 @@
  * current directory.
  */
 import { JSDOM } from "jsdom";
-import { readFileSync, writeFileSync, existsSync } from "fs";
-import { resolve, basename, dirname, extname } from "path";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { resolve, basename, dirname, extname } from "node:path";
+import { fileURLToPath } from "node:url";
+import type {
+  ExcalidrawRectangle,
+  ExcalidrawEllipse,
+  ExcalidrawLine,
+  ExcalidrawDraw,
+  ExcalidrawText,
+} from "./src/elements/ExcalidrawElement";
+
+type ExcalidrawElement =
+  | ExcalidrawRectangle
+  | ExcalidrawEllipse
+  | ExcalidrawLine
+  | ExcalidrawDraw
+  | ExcalidrawText;
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ── Minimal DOMMatrix polyfill (jsdom lacks it) ─────────────────────────
 class DOMMatrixPolyfill {
@@ -74,10 +91,10 @@ const win = dom.window as any;
 (globalThis as any).NodeFilter = win.NodeFilter;
 (globalThis as any).navigator = win.navigator;
 (globalThis as any).DOMMatrix = DOMMatrixPolyfill;
-(win as any).DOMMatrix = DOMMatrixPolyfill;
+win.DOMMatrix = DOMMatrixPolyfill;
 
 // ── Load the svg-to-excalidraw UMD bundle ────────────────────────────────
-const bundlePath = resolve(import.meta.dir, "dist/bundle.js");
+const bundlePath = resolve(__dirname, "dist/bundle.js");
 if (!existsSync(bundlePath)) {
   console.error(`Bundle not found at ${bundlePath}. Run the build first:`);
   console.error(`  NODE_OPTIONS=--openssl-legacy-provider bunx webpack --config webpack.config.js`);
@@ -86,7 +103,7 @@ if (!existsSync(bundlePath)) {
 const bundleCode = readFileSync(bundlePath, "utf-8");
 try { win.eval(bundleCode); } catch { /* bundle self-registers on win */ }
 const lib = win["svg-to-excalidraw"];
-const convert: ((svg: string) => { hasErrors: boolean; content: any }) | undefined =
+const convert: ((svg: string) => { hasErrors: boolean; content: { elements: ExcalidrawElement[] } | null }) | undefined =
   lib?.default?.convert ?? lib?.convert;
 
 // ── CLI argument handling ────────────────────────────────────────────────
@@ -116,7 +133,7 @@ console.log(`Input:  ${inputPath} (${(svgString.length / 1024).toFixed(0)} KB)`)
 // The use handler is graceful (skips instead of crashing on unsupported refs).
 // ═══════════════════════════════════════════════════════════════════════════
 
-let elements: any[] = [];
+let elements: ExcalidrawElement[] = [];
 if (convert) {
   try {
     const result = convert(svgString);
@@ -138,7 +155,7 @@ if (convert) {
 // Post-processing — normalize color values for Excalidraw compatibility
 // ═══════════════════════════════════════════════════════════════════════════
 
-function fixElement(el: any): any {
+function fixElement(el: ExcalidrawElement): ExcalidrawElement | null {
   // Drop full-canvas background rectangles (SVG viewBox fill)
   if (el.type === "rectangle" && el.x === 0 && el.y === 0 && el.width > 3000 && el.height > 2000) {
     return null;
@@ -150,7 +167,9 @@ function fixElement(el: any): any {
   return el;
 }
 
-const allElements = elements.map(fixElement).filter(Boolean);
+const allElements = elements.map(fixElement).filter(
+  (el): el is ExcalidrawElement => el !== null,
+);
 
 const excalidrawData = {
   type: "excalidraw",
