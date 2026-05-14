@@ -63,7 +63,6 @@ export type ChartType = "bar" | "line";
 export type FillStyle = "hachure" | "cross-hatch" | "solid";
 export type FontFamily = keyof typeof FONT_FAMILY;
 export type FontString = string & { _brand: "fontString" };
-export type GroupId = string;
 export type PointerType = "mouse" | "pen" | "touch";
 export type StrokeSharpness = "round" | "sharp";
 export type StrokeStyle = "solid" | "dashed" | "dotted";
@@ -98,7 +97,7 @@ type _ExcalidrawElementBase = Readonly<{
   isDeleted: boolean;
   /** List of groups the element belongs to.
       Ordered from deepest to shallowest. */
-  groupIds: readonly GroupId[];
+  groupIds: readonly string[];
   /** Ids of (linear) elements that are bound to this element. */
   boundElementIds: readonly ExcalidrawLinearElement["id"][] | null;
 }>;

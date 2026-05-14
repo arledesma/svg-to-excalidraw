@@ -1,7 +1,7 @@
 import { randomId, randomInteger } from "../utils";
 
 import {
-  GroupId,
+
   FillStyle,
   StrokeStyle,
   StrokeSharpness,
@@ -41,7 +41,7 @@ export type ExcalidrawElementBase = {
   isDeleted: boolean;
   /** List of groups the element belongs to.
       Ordered from deepest to shallowest. */
-  groupIds: GroupId[];
+  groupIds: string[];
   /** Ids of (linear) elements that are bound to this element. */
   boundElementIds: ExcalidrawLinearElement["id"][] | null;
 };
