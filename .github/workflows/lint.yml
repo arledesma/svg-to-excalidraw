@@ -31,5 +31,3 @@ jobs:
 
       - name: Build
         run: bun run build
-        env:
-          NODE_OPTIONS: --openssl-legacy-provider
