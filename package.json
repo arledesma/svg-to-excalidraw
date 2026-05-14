@@ -8,9 +8,13 @@
     "svg-to-excalidraw.d.ts"
   ],
   "types": "svg-to-excalidraw.d.ts",
+  "bin": {
+    "svg-to-excalidraw": "cli.ts"
+  },
   "scripts": {
-    "build": "yarn clean && webpack --config webpack.config.js",
-    "build:watch": "yarn clean && webpack --config webpack.config.js --watch",
+    "convert": "bun cli.ts",
+    "build": "NODE_OPTIONS=--openssl-legacy-provider webpack --config webpack.config.js",
+    "build:watch": "NODE_OPTIONS=--openssl-legacy-provider webpack --config webpack.config.js --watch",
     "clean": "rimraf dist",
     "fix": "yarn fix:other && yarn fix:code",
     "fix:code": "yarn test:code -- --fix",
@@ -58,6 +62,7 @@
   "dependencies": {
     "chroma-js": "^2.1.2",
     "gl-matrix": "^3.3.0",
+    "jsdom": "^29.1.1",
     "nanoid": "^3.1.25",
     "path-data-parser": "^0.1.0",
     "points-on-curve": "^0.2.0",
