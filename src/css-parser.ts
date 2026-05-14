@@ -6,7 +6,7 @@ type CSSRule = {
 };
 
 export class CSSParser {
-  private rules: CSSRule[] = [];
+  private readonly rules: CSSRule[] = [];
 
   constructor(cssText: string) {
     this.parse(cssText);
@@ -82,7 +82,7 @@ export class CSSParser {
 
       // Complex selector - check if element matches the last part
       // and ancestors match the previous parts
-      if (!this.matchesSimpleSelector(element, parts[parts.length - 1])) {
+      if (!this.matchesSimpleSelector(element, parts.at(-1)!)) {
         return false;
       }
 
@@ -99,7 +99,7 @@ export class CSSParser {
       }
 
       return partIndex < 0;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
