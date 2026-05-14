@@ -13,8 +13,11 @@
  */
 import { parseHTML, DOMParser, NodeFilter } from "linkedom";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve, basename, dirname, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+
+const require = createRequire(import.meta.url);
 import type {
   ExcalidrawRectangle,
   ExcalidrawEllipse,
