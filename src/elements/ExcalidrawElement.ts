@@ -63,7 +63,8 @@ export type ExcalidrawGenericElement =
   | ExcalidrawRectangle
   | ExcalidrawEllipse
   | ExcalidrawLine
-  | ExcalidrawDraw;
+  | ExcalidrawDraw
+  | ExcalidrawText;
 
 export type ExcalidrawDraw = ExcalidrawElementBase & {
   type: "draw";

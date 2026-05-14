@@ -280,17 +280,16 @@ const walkers = {
     const x = transformedPoints[0][0];
     const y = transformedPoints[0][1];
 
-    const relativePoints = transformedPoints.map(([_x, _y]) => [
-      _x - x,
-      _y - y,
-    ]);
+    const relativePoints: Point[] = transformedPoints.map(
+      ([_x, _y]): Point => [_x - x, _y - y],
+    );
 
     const [width, height] = dimensionsFromPoints(relativePoints);
 
     const line: ExcalidrawLine = {
       ...createExLine(),
       ...presAttrs(el, groups, cssParser),
-      points: relativePoints.concat([[0, 0]]),
+      points: relativePoints.concat([[0, 0]] as Point[]),
       x,
       y,
       width,
@@ -316,10 +315,9 @@ const walkers = {
     const x = transformedPoints[0][0];
     const y = transformedPoints[0][1];
 
-    const relativePoints = transformedPoints.map(([_x, _y]) => [
-      _x - x,
-      _y - y,
-    ]);
+    const relativePoints: Point[] = transformedPoints.map(
+      ([_x, _y]): Point => [_x - x, _y - y],
+    );
 
     const [width, height] = dimensionsFromPoints(relativePoints);
 
@@ -331,7 +329,7 @@ const walkers = {
     const line: ExcalidrawLine = {
       ...createExLine(),
       ...presAttrs(el, groups, cssParser),
-      points: relativePoints.concat(shouldFill ? [[0, 0]] : []),
+      points: relativePoints.concat(shouldFill ? ([[0, 0]] as Point[]) : []),
       x,
       y,
       width,
