@@ -26,7 +26,7 @@ import {
 } from "./attributes";
 import { getTransformMatrix, transformPoints } from "./transform";
 import { pointsOnPath } from "points-on-path";
-import type { CSSParser } from "./css-parser";
+import { getCSSParser, type CSSParser } from "./css-parser";
 
 const SUPPORTED_TAGS = new Set([
   "svg",
@@ -40,6 +40,8 @@ const SUPPORTED_TAGS = new Set([
   "polygon",
   "text",
   "foreignObject",
+  "switch",
+  "image",
 ]);
 
 const nodeValidator = (node: Element): number => {
@@ -174,19 +176,17 @@ const walkers = {
 
     const tempScene = new ExcalidrawScene();
 
-    const finalEl = getDefElWithCorrectAttrs(defEl, useEl);
+    // For leaf elements (rect, circle, etc.), merge use/def attributes.
+    // For containers (symbol, g), walk the original def's children directly
+    // since cloneNode() is shallow and would lose children.
+    const walkTarget = defEl.children.length > 0 ? defEl : getDefElWithCorrectAttrs(defEl, useEl);
+    const subTw = createTreeWalker(walkTarget);
 
     walk(
-      {
-        ...args,
-        scene: tempScene,
-        tw: createTreeWalker(finalEl),
-      },
-      finalEl,
+      { ...args, scene: tempScene, tw: subTw },
+      subTw.nextNode() ?? walkTarget,
     );
 
-    // Push all elements created from the referenced def (may be 0 if the
-    // def contained unsupported elements like <image> inside <symbol>)
     if (tempScene.elements.length > 0) {
       scene.elements.push(...tempScene.elements);
     }
@@ -577,6 +577,86 @@ const walkers = {
     };
 
     scene.elements.push(text);
+
+    walk(args, tw.nextNode());
+  },
+
+  // SVG <switch> renders the first supported child. Walk into children
+  // so that <foreignObject> elements inside are processed.
+  switch: (args: WalkerArgs) => {
+    const nextArgs = {
+      ...args,
+      tw: createTreeWalker(args.tw.currentNode),
+    };
+    walk(nextArgs, nextArgs.tw.nextNode());
+    walk(args, nextSiblingOf(args.tw));
+  },
+
+  // Handle <image> elements with embedded base64 SVGs by recursively
+  // converting the inner SVG and merging the resulting elements.
+  image: (args: WalkerArgs) => {
+    const { tw, scene, groups } = args;
+    const el = tw.currentNode as Element;
+
+    const href = el.getAttribute("href") || el.getAttribute("xlink:href") || "";
+
+    if (href.startsWith("data:image/svg+xml;base64,")) {
+      // Decode the embedded SVG
+      const base64 = href.slice("data:image/svg+xml;base64,".length);
+      let innerSvg: string;
+      try {
+        innerSvg = atob(base64);
+      } catch {
+        walk(args, tw.nextNode());
+        return;
+      }
+
+      // Parse and walk the inner SVG
+      const parser = new DOMParser();
+      const innerDoc = parser.parseFromString(innerSvg, "image/svg+xml");
+      const innerCss = getCSSParser(innerDoc);
+      const innerScene = new ExcalidrawScene();
+      const innerTw = createTreeWalker(innerDoc);
+
+      walk(
+        { tw: innerTw, scene: innerScene, groups: [], root: innerDoc, cssParser: innerCss },
+        innerTw.nextNode(),
+      );
+
+      if (innerScene.elements.length === 0) {
+        walk(args, tw.nextNode());
+        return;
+      }
+
+      // Compute the offset from accumulated parent transforms
+      const mat = getTransformMatrix(el, groups);
+      const imgX = getNum(el, "x", 0);
+      const imgY = getNum(el, "y", 0);
+      const offsetM = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, imgX, imgY, 0, 1);
+      const offset = mat4.multiply(mat4.create(), mat, offsetM);
+      const ox = offset[12];
+      const oy = offset[13];
+
+      // Compute scale: the <use>/<image> width/height vs the inner SVG's viewBox
+      const useWidth = getNum(el, "width", 0);
+      const useHeight = getNum(el, "height", 0);
+      const svgEl = innerDoc.querySelector("svg");
+      const innerWidth = Number.parseFloat(svgEl?.getAttribute("width") || "0") ||
+                         Number.parseFloat(svgEl?.getAttribute("viewBox")?.split(/\s+/)[2] || "0");
+      const innerHeight = Number.parseFloat(svgEl?.getAttribute("height") || "0") ||
+                          Number.parseFloat(svgEl?.getAttribute("viewBox")?.split(/\s+/)[3] || "0");
+      const sx = (useWidth && innerWidth) ? useWidth / innerWidth : 1;
+      const sy = (useHeight && innerHeight) ? useHeight / innerHeight : 1;
+
+      // Offset and scale all inner elements
+      for (const elem of innerScene.elements) {
+        elem.x = elem.x * sx + ox;
+        elem.y = elem.y * sy + oy;
+        elem.width *= sx;
+        elem.height *= sy;
+        scene.elements.push(elem);
+      }
+    }
 
     walk(args, tw.nextNode());
   },
