@@ -8,10 +8,12 @@ import {
   ExcalidrawEllipse,
   ExcalidrawLine,
   ExcalidrawDraw,
+  ExcalidrawText,
   createExRect,
   createExEllipse,
   createExLine,
   createExDraw,
+  createExText,
   Point,
 } from "./elements/ExcalidrawElement";
 import {
@@ -25,6 +27,7 @@ import {
 import { getTransformMatrix, transformPoints } from "./transform";
 import { pointsOnPath } from "points-on-path";
 import { randomId, getWindingOrder } from "./utils";
+import { getCSSParser, CSSParser } from "./css-parser";
 
 const SUPPORTED_TAGS = [
   "svg",
@@ -36,6 +39,8 @@ const SUPPORTED_TAGS = [
   "rect",
   "polyline",
   "polygon",
+  "text",
+  "foreignObject",
 ];
 
 const nodeValidator = (node: Element): number => {
@@ -57,15 +62,17 @@ type WalkerArgs = {
   tw: TreeWalker;
   scene: ExcalidrawScene;
   groups: Group[];
+  cssParser: CSSParser | null;
 };
 
 const presAttrs = (
   el: Element,
   groups: Group[],
+  cssParser: CSSParser | null,
 ): Partial<ExcalidrawElementBase> => {
   return {
     ...getGroupAttrs(groups),
-    ...presAttrsToElementValues(el),
+    ...presAttrsToElementValues(el, cssParser),
     ...filterAttrsToElementValues(el),
   };
 };
@@ -138,13 +145,17 @@ const walkers = {
     const id = useEl.getAttribute("href") || useEl.getAttribute("xlink:href");
 
     if (!id) {
-      throw new Error("unable to get id of use element");
+      // Skip use elements without a reference instead of crashing
+      walk(args, args.tw.nextNode());
+      return;
     }
 
     const defEl = root.querySelector(id);
 
     if (!defEl) {
-      throw new Error(`unable to find def element with id: ${id}`);
+      // Referenced element not found (may be in an external file) — skip
+      walk(args, args.tw.nextNode());
+      return;
     }
 
     const tempScene = new ExcalidrawScene();
@@ -160,19 +171,17 @@ const walkers = {
       finalEl,
     );
 
-    const exEl = tempScene.elements.pop();
-
-    if (!exEl) {
-      throw new Error("Unable to create ex element");
+    // Push all elements created from the referenced def (may be 0 if the
+    // def contained unsupported elements like <image> inside <symbol>)
+    if (tempScene.elements.length > 0) {
+      scene.elements.push(...tempScene.elements);
     }
-
-    scene.elements.push(exEl);
 
     walk(args, args.tw.nextNode());
   },
 
   circle: (args: WalkerArgs): void => {
-    const { tw, scene, groups } = args;
+    const { tw, scene, groups, cssParser } = args;
     const el = tw.currentNode as Element;
 
     const r = getNum(el, "r", 0);
@@ -189,7 +198,7 @@ const walkers = {
 
     const circle: ExcalidrawEllipse = {
       ...createExEllipse(),
-      ...presAttrs(el, groups),
+      ...presAttrs(el, groups, cssParser),
       x: result[12],
       y: result[13],
       width: result[0],
@@ -203,7 +212,7 @@ const walkers = {
   },
 
   ellipse: (args: WalkerArgs): void => {
-    const { tw, scene, groups } = args;
+    const { tw, scene, groups, cssParser } = args;
     const el = tw.currentNode as Element;
 
     const rx = getNum(el, "rx", 0);
@@ -223,7 +232,7 @@ const walkers = {
 
     const ellipse: ExcalidrawEllipse = {
       ...createExEllipse(),
-      ...presAttrs(el, groups),
+      ...presAttrs(el, groups, cssParser),
       x: result[12],
       y: result[13],
       width: result[0],
@@ -242,7 +251,7 @@ const walkers = {
   },
 
   polygon: (args: WalkerArgs) => {
-    const { tw, scene, groups } = args;
+    const { tw, scene, groups, cssParser } = args;
     const el = tw.currentNode as Element;
 
     const points = pointsAttrToPoints(el);
@@ -265,8 +274,7 @@ const walkers = {
 
     const line: ExcalidrawLine = {
       ...createExLine(),
-      ...getGroupAttrs(groups),
-      ...presAttrsToElementValues(el),
+      ...presAttrs(el, groups, cssParser),
       points: relativePoints.concat([[0, 0]]),
       x,
       y,
@@ -280,7 +288,7 @@ const walkers = {
   },
 
   polyline: (args: WalkerArgs) => {
-    const { tw, scene, groups } = args;
+    const { tw, scene, groups, cssParser } = args;
     const el = tw.currentNode as Element;
 
     const mat = getTransformMatrix(el, groups);
@@ -307,8 +315,7 @@ const walkers = {
 
     const line: ExcalidrawLine = {
       ...createExLine(),
-      ...getGroupAttrs(groups),
-      ...presAttrsToElementValues(el),
+      ...presAttrs(el, groups, cssParser),
       points: relativePoints.concat(shouldFill ? [[0, 0]] : []),
       x,
       y,
@@ -322,7 +329,7 @@ const walkers = {
   },
 
   rect: (args: WalkerArgs) => {
-    const { tw, scene, groups } = args;
+    const { tw, scene, groups, cssParser } = args;
     const el = tw.currentNode as Element;
 
     const x = getNum(el, "x", 0);
@@ -346,7 +353,7 @@ const walkers = {
 
     const rect: ExcalidrawRectangle = {
       ...createExRect(),
-      ...presAttrs(el, groups),
+      ...presAttrs(el, groups, cssParser),
       x: result[12],
       y: result[13],
       width: result[0],
@@ -360,14 +367,14 @@ const walkers = {
   },
 
   path: (args: WalkerArgs) => {
-    const { tw, scene, groups } = args;
+    const { tw, scene, groups, cssParser } = args;
     const el = tw.currentNode as Element;
 
     const mat = getTransformMatrix(el, groups);
 
     const points = pointsOnPath(get(el, "d"));
 
-    const fillColor = get(el, "fill", "black");
+    const fillColor = get(el, "fill", "none");
     const fillRule = get(el, "fill-rule", "nonzero");
 
     let elements: ExcalidrawDraw[] = [];
@@ -399,13 +406,24 @@ const walkers = {
             backgroundColor = "#FFFFFF";
           }
 
+          // Get presentation attributes first
+          const attrs = presAttrs(el, groups, cssParser);
+
+          // Only set transparent stroke if this is a filled path (has fill and no visible stroke)
+          const hasFill = fillColor && fillColor !== "none";
+          const hasVisibleStroke = has(el, "stroke") && get(el, "stroke") !== "none" ||
+                                   (attrs.strokeColor && attrs.strokeColor !== "#00000000");
+
+          // Default stroke color for paths without fill
+          const defaultStroke = hasFill ? {} : { strokeColor: attrs.strokeColor || "#333333", strokeWidth: attrs.strokeWidth || 1 };
+
           return {
             ...createExDraw(),
-            strokeWidth: 0,
-            strokeColor: "#00000000",
-            ...presAttrs(el, groups),
+            // Only make stroke transparent if this is clearly a filled path with no stroke
+            ...(hasFill && !hasVisibleStroke ? { strokeWidth: 0, strokeColor: "#00000000" } : defaultStroke),
+            ...attrs,
             points: relativePoints,
-            backgroundColor,
+            backgroundColor: backgroundColor !== "none" ? backgroundColor : "#00000000",
             width,
             height,
             x: x + getNum(el, "x", 0),
@@ -432,7 +450,7 @@ const walkers = {
 
           return {
             ...createExDraw(),
-            ...presAttrs(el, groups),
+            ...presAttrs(el, groups, cssParser),
             points: relativePoints,
             width,
             height,
@@ -445,6 +463,98 @@ const walkers = {
     }
 
     scene.elements = scene.elements.concat(elements);
+
+    walk(args, tw.nextNode());
+  },
+
+  text: (args: WalkerArgs) => {
+    const { tw, scene, groups, cssParser } = args;
+    const el = tw.currentNode as Element;
+
+    // Get the text content
+    let textContent = el.textContent || "";
+    textContent = textContent.trim();
+
+    if (!textContent) {
+      walk(args, tw.nextNode());
+      return;
+    }
+
+    // Get position and size
+    const x = getNum(el, "x", 0);
+    const y = getNum(el, "y", 0);
+    const fontSize = getNum(el, "font-size", 16);
+
+    // Estimate width and height based on text length and font size
+    const avgCharWidth = fontSize * 0.6;
+    const width = textContent.length * avgCharWidth;
+    const height = fontSize * 1.2;
+
+    const mat = getTransformMatrix(el, groups);
+
+    // Apply transformations if any
+    const m = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1);
+    const result = mat4.multiply(mat4.create(), mat, m);
+
+    const text: ExcalidrawText = {
+      ...createExText(),
+      ...presAttrs(el, groups, cssParser),
+      text: textContent,
+      fontSize,
+      x: result[12],
+      y: result[13] - fontSize, // Adjust for baseline
+      width,
+      height,
+      groupIds: groups.map((g) => g.id),
+    };
+
+    scene.elements.push(text);
+
+    walk(args, tw.nextNode());
+  },
+
+  foreignObject: (args: WalkerArgs) => {
+    const { tw, scene, groups, cssParser } = args;
+    const el = tw.currentNode as Element;
+
+    // Extract text from HTML content
+    let textContent = el.textContent || "";
+    textContent = textContent.trim();
+
+    if (!textContent) {
+      walk(args, tw.nextNode());
+      return;
+    }
+
+    // Get position and size
+    const x = getNum(el, "x", 0);
+    const y = getNum(el, "y", 0);
+    const width = getNum(el, "width", 200);
+    const height = getNum(el, "height", 24);
+
+    // Estimate font size from height
+    const fontSize = Math.max(12, Math.floor(height * 0.7));
+
+    const mat = getTransformMatrix(el, groups);
+
+    // Apply transformations if any
+    const m = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1);
+    const result = mat4.multiply(mat4.create(), mat, m);
+
+    const text: ExcalidrawText = {
+      ...createExText(),
+      text: textContent,
+      fontSize,
+      x: result[12],
+      y: result[13],
+      width: width || textContent.length * fontSize * 0.6,
+      height: height || fontSize * 1.2,
+      groupIds: groups.map((g) => g.id),
+      strokeColor: "#000000",
+      backgroundColor: "transparent",
+    };
+
+    scene.elements.push(text);
 
     walk(args, tw.nextNode());
   },

@@ -6,6 +6,9 @@ import {
   StrokeStyle,
   StrokeSharpness,
   ExcalidrawLinearElement,
+  FontFamily,
+  TextAlign,
+  VerticalAlign,
 } from "../types";
 
 export type Point = [number, number];
@@ -67,6 +70,16 @@ export type ExcalidrawDraw = ExcalidrawElementBase & {
   points: readonly Point[];
 };
 
+export type ExcalidrawText = ExcalidrawElementBase & {
+  type: "text";
+  text: string;
+  fontSize: number;
+  fontFamily: FontFamily;
+  textAlign: TextAlign;
+  verticalAlign: VerticalAlign;
+  baseline: number;
+};
+
 export function createExElement(): ExcalidrawElementBase {
   return {
     id: randomId(),
@@ -119,5 +132,20 @@ export function createExDraw(): ExcalidrawDraw {
     ...createExElement(),
     type: "draw",
     points: [],
+  };
+}
+
+export function createExText(): ExcalidrawText {
+  return {
+    ...createExElement(),
+    type: "text",
+    text: "",
+    fontSize: 20,
+    fontFamily: 1, // Virgil
+    textAlign: "center",
+    verticalAlign: "middle",
+    baseline: 18,
+    strokeColor: "#000000",
+    backgroundColor: "transparent",
   };
 }

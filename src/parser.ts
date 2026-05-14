@@ -1,6 +1,7 @@
 import ExcalidrawScene from "./elements/ExcalidrawScene";
 import Group from "./elements/Group";
 import { createTreeWalker, walk } from "./walker";
+import { getCSSParser } from "./css-parser";
 
 export type ConversionResult = {
   hasErrors: boolean;
@@ -26,8 +27,9 @@ export const convert = (svgString: string): ConversionResult => {
     const tw = createTreeWalker(svgDOM);
     const scene = new ExcalidrawScene();
     const groups: Group[] = [];
+    const cssParser = getCSSParser(svgDOM);
 
-    walk({ tw, scene, groups, root: svgDOM }, tw.nextNode());
+    walk({ tw, scene, groups, root: svgDOM, cssParser }, tw.nextNode());
 
     content = scene.toExJSON();
   }
