@@ -63,8 +63,51 @@ function parseStyleAttr(style: string, attr: string): string | null {
   return value;
 }
 
+// SVG absolute unit → px conversion factors (CSS spec: 1in = 96px)
+const UNIT_TO_PX: Record<string, number> = {
+  px: 1,
+  pt: 96 / 72,     // 1pt = 1.333px
+  pc: 96 / 6,      // 1pc = 16px
+  in: 96,           // 1in = 96px
+  cm: 96 / 2.54,   // 1cm ≈ 37.795px
+  mm: 96 / 25.4,   // 1mm ≈ 3.780px
+};
+
+/**
+ * Parse a CSS/SVG length value with unit to px.
+ *
+ * Absolute units (px, pt, pc, in, cm, mm) are converted precisely.
+ * Relative units (em, rem) are approximated using a default base of 16px.
+ * Percentage (%) is treated as a fraction of 100 (caller's responsibility to
+ * multiply by the reference dimension if needed).
+ * Unitless values are returned as-is (SVG user units = px).
+ */
+export function parseLengthToPx(value: string): number {
+  const num = parseFloat(value);
+  if (isNaN(num)) return NaN;
+
+  const unitMatch = value.match(/[a-z%]+$/i);
+  if (!unitMatch) return num; // unitless → px
+
+  const unit = unitMatch[0].toLowerCase();
+
+  // Absolute units
+  if (unit in UNIT_TO_PX) return num * UNIT_TO_PX[unit];
+
+  // Relative units — best-effort with 16px base
+  if (unit === "em" || unit === "rem") return num * 16;
+
+  // Percentage — return the numeric value, caller interprets
+  if (unit === "%") return num;
+
+  // Viewport/font-metric units (ex, ch, vw, vh) — treat as px
+  return num;
+}
+
 export function getNum(el: Element, attr: string, backup?: number): number {
-  const numVal = parseFloat(get(el, attr));
+  const raw = get(el, attr);
+  if (!raw) return backup || 0;
+  const numVal = parseLengthToPx(raw);
   return isNaN(numVal) ? backup || 0 : numVal;
 }
 
@@ -115,7 +158,7 @@ const attrHandlers: PresAttrHandlers = {
   "stroke-width": ({ el, exVals, cssParser }) => {
     const widthStr = getWithCSS(el, "stroke-width", cssParser);
     // Remove 'px' suffix if present
-    const widthNum = parseFloat(widthStr);
+    const widthNum = parseLengthToPx(widthStr);
     exVals.strokeWidth = isNaN(widthNum) ? 1 : widthNum;
   },
 
@@ -213,7 +256,7 @@ export function pointsAttrToPoints(el: Element): number[][] {
   if (has(el, "points")) {
     points = get(el, "points")
       .split(" ")
-      .map((p) => p.split(",").map(parseFloat));
+      .map((p) => p.split(",").map(parseLengthToPx));
   }
 
   return points;
