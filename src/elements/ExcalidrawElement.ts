@@ -59,12 +59,20 @@ export type ExcalidrawEllipse = ExcalidrawElementBase & {
   type: "ellipse";
 };
 
+export type ExcalidrawImage = ExcalidrawElementBase & {
+  type: "image";
+  fileId: string;
+  status: "saved";
+  scale: [number, number];
+};
+
 export type ExcalidrawGenericElement =
   | ExcalidrawRectangle
   | ExcalidrawEllipse
   | ExcalidrawLine
   | ExcalidrawDraw
-  | ExcalidrawText;
+  | ExcalidrawText
+  | ExcalidrawImage;
 
 export type ExcalidrawDraw = ExcalidrawElementBase & {
   type: "draw";
@@ -147,6 +155,18 @@ export function createExText(): ExcalidrawText {
     verticalAlign: "middle",
     baseline: 18,
     strokeColor: "#000000",
+    backgroundColor: "transparent",
+  };
+}
+
+export function createExImage(fileId: string): ExcalidrawImage {
+  return {
+    ...createExElement(),
+    type: "image",
+    fileId,
+    status: "saved",
+    scale: [1, 1],
+    strokeColor: "transparent",
     backgroundColor: "transparent",
   };
 }

@@ -54,7 +54,7 @@ if (!existsSync(bundlePath)) {
 
 type ConvertFn = (svg: string) => {
   hasErrors: boolean;
-  content: { elements: ExcalidrawElement[] } | null;
+  content: { elements: ExcalidrawElement[]; files: Record<string, unknown> } | null;
 };
 
 const lib = require(bundlePath) as { default?: { convert?: ConvertFn }; convert?: ConvertFn };
@@ -87,6 +87,7 @@ console.log(`Input:  ${inputPath} (${(svgString.length / 1024).toFixed(0)} KB)`)
 // ═══════════════════════════════════════════════════════════════════════════
 
 let elements: ExcalidrawElement[] = [];
+let files: Record<string, unknown> = {};
 if (convert) {
   try {
     const result = convert(svgString);
@@ -94,7 +95,10 @@ if (convert) {
       console.warn("SVG parse errors detected, continuing with partial results");
     }
     elements = result.content?.elements ?? [];
-    console.log(`Converted: ${elements.length} elements`);
+    files = result.content?.files ?? {};
+    const fileCount = Object.keys(files).length;
+    const imageSuffix = fileCount ? ", " + fileCount + " images" : "";
+    console.log(`Converted: ${elements.length} elements${imageSuffix}`);
   } catch (err: any) {
     console.error(`Conversion failed: ${err.message}`);
     process.exit(1);
@@ -117,7 +121,7 @@ const excalidrawData = {
     viewBackgroundColor: "#ffffff",
     gridSize: null,
   },
-  files: {},
+  files,
 };
 
 writeFileSync(outputPath, JSON.stringify(excalidrawData, null, 2));

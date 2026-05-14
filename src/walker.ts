@@ -9,11 +9,13 @@ import {
   ExcalidrawLine,
   ExcalidrawDraw,
   ExcalidrawText,
+  ExcalidrawImage,
   createExRect,
   createExEllipse,
   createExLine,
   createExDraw,
   createExText,
+  createExImage,
   Point,
 } from "./elements/ExcalidrawElement";
 import {
@@ -224,6 +226,7 @@ const walkers = {
 
     if (tempScene.elements.length > 0) {
       scene.elements.push(...tempScene.elements);
+      Object.assign(scene.files, tempScene.files);
     }
 
     walk(args, args.tw.nextNode());
@@ -680,7 +683,7 @@ const walkers = {
       const sx = (useWidth && innerWidth) ? useWidth / innerWidth : 1;
       const sy = (useHeight && innerHeight) ? useHeight / innerHeight : 1;
 
-      // Offset and scale all inner elements
+      // Offset and scale all inner elements, merge files
       for (const elem of innerScene.elements) {
         elem.x = elem.x * sx + ox;
         elem.y = elem.y * sy + oy;
@@ -688,6 +691,45 @@ const walkers = {
         elem.height *= sy;
         scene.elements.push(elem);
       }
+      Object.assign(scene.files, innerScene.files);
+
+    } else if (href.startsWith("data:image/")) {
+      // Non-SVG image (PNG, JPEG, etc.) — create an Excalidraw image element
+      const mat = getTransformMatrix(el, groups);
+      const imgX = getNum(el, "x", 0);
+      const imgY = getNum(el, "y", 0);
+      const w = getNum(el, "width", 0);
+      const h = getNum(el, "height", 0);
+
+      if (w === 0 || h === 0) {
+        walk(args, tw.nextNode());
+        return;
+      }
+
+      const offsetM = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, imgX, imgY, 0, 1);
+      const result = mat4.multiply(mat4.create(), mat, offsetM);
+
+      const fileId = randomId();
+      const mimeMatch = /^data:(image\/[^;]+);/.exec(href);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/png";
+
+      scene.files[fileId] = {
+        mimeType,
+        id: fileId,
+        dataURL: href,
+        created: Date.now(),
+      };
+
+      const img: ExcalidrawImage = {
+        ...createExImage(fileId),
+        x: result[12],
+        y: result[13],
+        width: w,
+        height: h,
+        groupIds: groups.map((g) => g.id),
+      };
+
+      scene.elements.push(img);
     }
 
     walk(args, tw.nextNode());
