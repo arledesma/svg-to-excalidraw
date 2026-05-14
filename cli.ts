@@ -25,22 +25,20 @@ class DOMMatrixPolyfill {
     }
   }
   private parseCSS(css: string) {
-    const matMatch = css.match(
-      /matrix\(\s*([-\d.e+]+)[\s,]+([-\d.e+]+)[\s,]+([-\d.e+]+)[\s,]+([-\d.e+]+)[\s,]+([-\d.e+]+)[\s,]+([-\d.e+]+)\s*\)/,
-    );
+    const N = String.raw`[-\d.e+]+`;
+    const S = String.raw`[\s,]+`;
+    const matMatch = new RegExp(String.raw`matrix\(\s*(${N})${S}(${N})${S}(${N})${S}(${N})${S}(${N})${S}(${N})\s*\)`).exec(css);
     if (matMatch) {
       const [, a, b, c, d, e, f] = matMatch.map(Number);
       this.m[0] = a; this.m[1] = b; this.m[4] = c;
       this.m[5] = d; this.m[12] = e; this.m[13] = f;
       return;
     }
-    const funcs = css.match(/(\w+)\(([^)]*)\)/g);
-    if (!funcs) return;
-    for (const func of funcs) {
-      const parts = func.match(/(\w+)\(([^)]*)\)/);
-      if (!parts) continue;
-      const name = parts[1];
-      const args = parts[2].split(/[\s,]+/).map(Number);
+    const funcRe = /(\w+)\(([^)]*)\)/g;
+    let funcMatch: RegExpExecArray | null;
+    while ((funcMatch = funcRe.exec(css)) !== null) {
+      const name = funcMatch[1];
+      const args = funcMatch[2].split(/[\s,]+/).map(Number);
       if (name === "translate") {
         this.m[12] += args[0] || 0;
         this.m[13] += args[1] || 0;
@@ -86,7 +84,7 @@ if (!existsSync(bundlePath)) {
   process.exit(1);
 }
 const bundleCode = readFileSync(bundlePath, "utf-8");
-try { win.eval(bundleCode); } catch {}
+try { win.eval(bundleCode); } catch { /* bundle self-registers on win */ }
 const lib = win["svg-to-excalidraw"];
 const convert: ((svg: string) => { hasErrors: boolean; content: any }) | undefined =
   lib?.default?.convert ?? lib?.convert;
@@ -140,7 +138,7 @@ if (convert) {
 // Post-processing — normalize color values for Excalidraw compatibility
 // ═══════════════════════════════════════════════════════════════════════════
 
-function fixElement(el: any): any | null {
+function fixElement(el: any): any {
   // Drop full-canvas background rectangles (SVG viewBox fill)
   if (el.type === "rectangle" && el.x === 0 && el.y === 0 && el.width > 3000 && el.height > 2000) {
     return null;
