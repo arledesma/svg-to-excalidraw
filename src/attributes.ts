@@ -77,12 +77,13 @@ const UNIT_TO_PX: Record<string, number> = {
  * Parse a CSS/SVG length value with unit to px.
  *
  * Absolute units (px, pt, pc, in, cm, mm) are converted precisely.
- * Relative units (em, rem) are approximated using a default base of 16px.
- * Percentage (%) is treated as a fraction of 100 (caller's responsibility to
- * multiply by the reference dimension if needed).
+ * Relative units (em, rem) are resolved against a contextual base font size.
+ * Percentage (%) and unresolvable units (ex, ch, vw, vh) return NaN so that
+ * callers fall back to their backup value rather than silently misinterpreting
+ * a relative number as px.
  * Unitless values are returned as-is (SVG user units = px).
  */
-export function parseLengthToPx(value: string): number {
+export function parseLengthToPx(value: string, baseFontSizePx?: number): number {
   const num = parseFloat(value);
   if (isNaN(num)) return NaN;
 
@@ -94,20 +95,38 @@ export function parseLengthToPx(value: string): number {
   // Absolute units
   if (unit in UNIT_TO_PX) return num * UNIT_TO_PX[unit];
 
-  // Relative units — best-effort with 16px base
-  if (unit === "em" || unit === "rem") return num * 16;
+  // Relative font units — resolve against context or 16px default
+  if (unit === "em" || unit === "rem") return num * (baseFontSizePx ?? 16);
 
-  // Percentage — return the numeric value, caller interprets
-  if (unit === "%") return num;
+  // Percentage and viewport/font-metric units (ex, ch, vw, vh) can't be
+  // resolved without layout context. Return NaN so getNum uses its backup.
+  return NaN;
+}
 
-  // Viewport/font-metric units (ex, ch, vw, vh) — treat as px
-  return num;
+/**
+ * Walk up the DOM to find the nearest ancestor (or self) with an explicit
+ * font-size attribute, and return it in px. Returns undefined if none found.
+ */
+function resolveBaseFontSize(el: Element): number | undefined {
+  let node: Element | null = el.parentElement;
+  while (node) {
+    const fs = node.getAttribute("font-size");
+    if (fs) {
+      // Parse without context to avoid infinite recursion — ancestor font-size
+      // should be absolute or unitless in well-formed SVG
+      const px = parseLengthToPx(fs);
+      if (!isNaN(px)) return px;
+    }
+    node = node.parentElement;
+  }
+  return undefined;
 }
 
 export function getNum(el: Element, attr: string, backup?: number): number {
   const raw = get(el, attr);
   if (!raw) return backup || 0;
-  const numVal = parseLengthToPx(raw);
+  const baseFontSize = resolveBaseFontSize(el);
+  const numVal = parseLengthToPx(raw, baseFontSize);
   return isNaN(numVal) ? backup || 0 : numVal;
 }
 
@@ -256,7 +275,7 @@ export function pointsAttrToPoints(el: Element): number[][] {
   if (has(el, "points")) {
     points = get(el, "points")
       .split(" ")
-      .map((p) => p.split(",").map(parseLengthToPx));
+      .map((p) => p.split(",").map((v) => parseLengthToPx(v)));
   }
 
   return points;
