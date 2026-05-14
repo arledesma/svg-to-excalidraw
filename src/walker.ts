@@ -384,6 +384,12 @@ const walkers = {
     const w = getNum(el, "width", 0);
     const h = getNum(el, "height", 0);
 
+    // Skip full-canvas background rects (SVG viewBox fill at root level)
+    if (x === 0 && y === 0 && groups.length === 0 && w > 3000 && h > 2000) {
+      walk(args, tw.nextNode());
+      return;
+    }
+
     const mat = getTransformMatrix(el, groups);
 
     // @ts-ignore
