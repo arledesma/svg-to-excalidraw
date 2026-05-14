@@ -84,10 +84,10 @@ const UNIT_TO_PX: Record<string, number> = {
  * Unitless values are returned as-is (SVG user units = px).
  */
 export function parseLengthToPx(value: string, baseFontSizePx?: number): number {
-  const num = parseFloat(value);
-  if (isNaN(num)) return NaN;
+  const num = Number.parseFloat(value);
+  if (Number.isNaN(num)) return Number.NaN;
 
-  const unitMatch = value.match(/[a-z%]+$/i);
+  const unitMatch = /[a-z%]+$/i.exec(value);
   if (!unitMatch) return num; // unitless → px
 
   const unit = unitMatch[0].toLowerCase();
@@ -100,7 +100,7 @@ export function parseLengthToPx(value: string, baseFontSizePx?: number): number 
 
   // Percentage and viewport/font-metric units (ex, ch, vw, vh) can't be
   // resolved without layout context. Return NaN so getNum uses its backup.
-  return NaN;
+  return Number.NaN;
 }
 
 /**
@@ -115,7 +115,7 @@ function resolveBaseFontSize(el: Element): number | undefined {
       // Parse without context to avoid infinite recursion — ancestor font-size
       // should be absolute or unitless in well-formed SVG
       const px = parseLengthToPx(fs);
-      if (!isNaN(px)) return px;
+      if (!Number.isNaN(px)) return px;
     }
     node = node.parentElement;
   }
@@ -127,7 +127,7 @@ export function getNum(el: Element, attr: string, backup?: number): number {
   if (!raw) return backup || 0;
   const baseFontSize = resolveBaseFontSize(el);
   const numVal = parseLengthToPx(raw, baseFontSize);
-  return isNaN(numVal) ? backup || 0 : numVal;
+  return Number.isNaN(numVal) ? backup || 0 : numVal;
 }
 
 const presAttrs = {
@@ -176,9 +176,8 @@ const attrHandlers: PresAttrHandlers = {
 
   "stroke-width": ({ el, exVals, cssParser }) => {
     const widthStr = getWithCSS(el, "stroke-width", cssParser);
-    // Remove 'px' suffix if present
     const widthNum = parseLengthToPx(widthStr);
-    exVals.strokeWidth = isNaN(widthNum) ? 1 : widthNum;
+    exVals.strokeWidth = Number.isNaN(widthNum) ? 1 : widthNum;
   },
 
   fill: ({ el, exVals, cssParser }) => {
@@ -233,8 +232,8 @@ export function presAttrsToElementValues(
   if (cssParser && !exVals.strokeWidth) {
     const strokeWidth = getWithCSS(el, "stroke-width", cssParser);
     if (strokeWidth && strokeWidth !== "") {
-      const widthNum = parseFloat(strokeWidth);
-      if (!isNaN(widthNum)) {
+      const widthNum = parseLengthToPx(strokeWidth);
+      if (!Number.isNaN(widthNum)) {
         exVals.strokeWidth = widthNum;
       }
     }
