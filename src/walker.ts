@@ -137,6 +137,41 @@ const getDefElWithCorrectAttrs = (defEl: Element, useEl: Element): Element => {
   return finalEl;
 };
 
+/** Extract position, font size, and color from a foreignObject element.
+ *  draw.io uses CSS padding-top/margin-left on inner divs for positioning
+ *  and nested divs with font-size for styling. */
+function parseForeignObjectLayout(el: Element): {
+  x: number; y: number; fontSize: number; color: string;
+} {
+  let x = getNum(el, "x", 0);
+  let y = getNum(el, "y", 0);
+  let fontSize = 16;
+  let color = "#000000";
+
+  const outerDiv = el.querySelector?.("div");
+  if (!outerDiv) return { x, y, fontSize, color };
+
+  const outerStyle = outerDiv.getAttribute("style") || "";
+  const ptMatch = /padding-top:\s*([\d.]+)px/.exec(outerStyle);
+  const mlMatch = /margin-left:\s*([\d.]+)px/.exec(outerStyle);
+  if (ptMatch) y = Number.parseFloat(ptMatch[1]);
+  if (mlMatch) x = Number.parseFloat(mlMatch[1]);
+
+  // Find the innermost div with a real font-size (not font-size: 0)
+  for (const div of Array.from(el.querySelectorAll?.("div") ?? []) as Element[]) {
+    const style = div.getAttribute("style") || "";
+    const fsMatch = /font-size:\s*([\d.]+)px/.exec(style);
+    if (fsMatch && fsMatch[1] !== "0") {
+      fontSize = Number.parseFloat(fsMatch[1]);
+      const colorMatch = /(?:^|;\s*)color:\s*(#[0-9a-fA-F]{3,8}|[a-z]+)/.exec(style);
+      if (colorMatch) color = colorMatch[1];
+      break;
+    }
+  }
+
+  return { x, y, fontSize, color };
+}
+
 const walkers = {
   svg: (args: WalkerArgs) => {
     walk(args, args.tw.nextNode());
@@ -539,27 +574,18 @@ const walkers = {
     const { tw, scene, groups } = args;
     const el = tw.currentNode as Element;
 
-    // Extract text from HTML content
-    let textContent = el.textContent || "";
-    textContent = textContent.trim();
-
+    const textContent = (el.textContent || "").trim();
     if (!textContent) {
       walk(args, tw.nextNode());
       return;
     }
 
-    // Get position and size
-    const x = getNum(el, "x", 0);
-    const y = getNum(el, "y", 0);
-    const width = getNum(el, "width", 200);
-    const height = getNum(el, "height", 24);
+    const { x, y, fontSize, color } = parseForeignObjectLayout(el);
 
-    // Estimate font size from height
-    const fontSize = Math.max(12, Math.floor(height * 0.7));
+    const width = textContent.length * fontSize * 0.6;
+    const height = fontSize * 1.4;
 
     const mat = getTransformMatrix(el, groups);
-
-    // Apply transformations if any
     const m = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1);
     const result = mat4.multiply(mat4.create(), mat, m);
 
@@ -569,10 +595,10 @@ const walkers = {
       fontSize,
       x: result[12],
       y: result[13],
-      width: width || textContent.length * fontSize * 0.6,
-      height: height || fontSize * 1.2,
+      width,
+      height,
       groupIds: groups.map((g) => g.id),
-      strokeColor: "#000000",
+      strokeColor: color,
       backgroundColor: "transparent",
     };
 
