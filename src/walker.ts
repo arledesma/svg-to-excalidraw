@@ -174,6 +174,108 @@ function parseForeignObjectLayout(el: Element): {
   return { x, y, fontSize, color };
 }
 
+/** Get inner SVG dimensions from its width/height or viewBox. */
+function getSvgDimensions(doc: Document): { w: number; h: number } {
+  const svg = doc.querySelector("svg");
+  const w = Number.parseFloat(svg?.getAttribute("width") || "0") ||
+            Number.parseFloat(svg?.getAttribute("viewBox")?.split(/\s+/)[2] || "0");
+  const h = Number.parseFloat(svg?.getAttribute("height") || "0") ||
+            Number.parseFloat(svg?.getAttribute("viewBox")?.split(/\s+/)[3] || "0");
+  return { w, h };
+}
+
+/** Compute offset position from an element's x/y + accumulated group transforms. */
+function computeOffset(el: Element, groups: Group[]): { ox: number; oy: number } {
+  const mat = getTransformMatrix(el, groups);
+  const x = getNum(el, "x", 0);
+  const y = getNum(el, "y", 0);
+  const m = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, y, 0, 1);
+  const result = mat4.multiply(mat4.create(), mat, m);
+  return { ox: result[12], oy: result[13] };
+}
+
+/** Embed an image as an Excalidraw image element with file data. */
+function embedAsImage(
+  el: Element, href: string, w: number, h: number,
+  scene: ExcalidrawScene, groups: Group[],
+): void {
+  if (w === 0 || h === 0) return;
+  const { ox, oy } = computeOffset(el, groups);
+  const fileId = randomId();
+  const mimeMatch = /^data:(image\/[^;]+);/.exec(href);
+  scene.files[fileId] = {
+    mimeType: mimeMatch ? mimeMatch[1] : "image/png",
+    id: fileId,
+    dataURL: href,
+    created: Date.now(),
+  };
+  scene.elements.push({
+    ...createExImage(fileId),
+    x: ox, y: oy, width: w, height: h,
+    groupIds: groups.map((g) => g.id),
+  });
+}
+
+/** Recursively convert a large embedded SVG and merge results into the scene. */
+function convertEmbeddedSvg(
+  el: Element, innerDoc: Document, imgW: number, imgH: number,
+  scene: ExcalidrawScene, groups: Group[],
+): void {
+  const innerCss = getCSSParser(innerDoc);
+  const innerScene = new ExcalidrawScene();
+  const innerTw = createTreeWalker(innerDoc);
+
+  walk(
+    { tw: innerTw, scene: innerScene, groups: [], root: innerDoc, cssParser: innerCss },
+    innerTw.nextNode(),
+  );
+
+  if (innerScene.elements.length === 0) return;
+
+  const { ox, oy } = computeOffset(el, groups);
+  const { w: innerW, h: innerH } = getSvgDimensions(innerDoc);
+  const sx = (imgW && innerW) ? imgW / innerW : 1;
+  const sy = (imgH && innerH) ? imgH / innerH : 1;
+
+  for (const elem of innerScene.elements) {
+    elem.x = elem.x * sx + ox;
+    elem.y = elem.y * sy + oy;
+    elem.width *= sx;
+    elem.height *= sy;
+    scene.elements.push(elem);
+  }
+  Object.assign(scene.files, innerScene.files);
+}
+
+/** Handle data: URI images — recursively convert large SVGs, embed the rest. */
+function handleDataImage(
+  el: Element, href: string, scene: ExcalidrawScene, groups: Group[],
+): void {
+  let w = getNum(el, "width", 0);
+  let h = getNum(el, "height", 0);
+
+  if (href.startsWith("data:image/svg+xml;base64,")) {
+    const base64 = href.slice("data:image/svg+xml;base64,".length);
+    let innerSvg: string;
+    try { innerSvg = atob(base64); } catch { return; }
+
+    const innerDoc = new DOMParser().parseFromString(innerSvg, "image/svg+xml");
+    const dims = getSvgDimensions(innerDoc);
+    if (!w) w = dims.w;
+    if (!h) h = dims.h;
+
+    // Large SVGs (full diagrams) are recursively converted to editable elements.
+    // Small SVGs (icons) are embedded as images to preserve visual fidelity.
+    if (dims.w >= 200 && dims.h >= 200) {
+      convertEmbeddedSvg(el, innerDoc, w, h, scene, groups);
+      return;
+    }
+  }
+
+  // Raster image (PNG, JPEG) or small SVG icon — embed as Excalidraw image
+  embedAsImage(el, href, w, h, scene, groups);
+}
+
 const walkers = {
   svg: (args: WalkerArgs) => {
     walk(args, args.tw.nextNode());
@@ -627,109 +729,13 @@ const walkers = {
     walk(args, nextSiblingOf(args.tw));
   },
 
-  // Handle <image> elements with embedded base64 SVGs by recursively
-  // converting the inner SVG and merging the resulting elements.
   image: (args: WalkerArgs) => {
     const { tw, scene, groups } = args;
     const el = tw.currentNode as Element;
-
     const href = el.getAttribute("href") || el.getAttribute("xlink:href") || "";
 
-    if (href.startsWith("data:image/svg+xml;base64,")) {
-      // Decode the embedded SVG
-      const base64 = href.slice("data:image/svg+xml;base64,".length);
-      let innerSvg: string;
-      try {
-        innerSvg = atob(base64);
-      } catch {
-        walk(args, tw.nextNode());
-        return;
-      }
-
-      // Parse and walk the inner SVG
-      const parser = new DOMParser();
-      const innerDoc = parser.parseFromString(innerSvg, "image/svg+xml");
-      const innerCss = getCSSParser(innerDoc);
-      const innerScene = new ExcalidrawScene();
-      const innerTw = createTreeWalker(innerDoc);
-
-      walk(
-        { tw: innerTw, scene: innerScene, groups: [], root: innerDoc, cssParser: innerCss },
-        innerTw.nextNode(),
-      );
-
-      if (innerScene.elements.length === 0) {
-        walk(args, tw.nextNode());
-        return;
-      }
-
-      // Compute the offset from accumulated parent transforms
-      const mat = getTransformMatrix(el, groups);
-      const imgX = getNum(el, "x", 0);
-      const imgY = getNum(el, "y", 0);
-      const offsetM = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, imgX, imgY, 0, 1);
-      const offset = mat4.multiply(mat4.create(), mat, offsetM);
-      const ox = offset[12];
-      const oy = offset[13];
-
-      // Compute scale: the <use>/<image> width/height vs the inner SVG's viewBox
-      const useWidth = getNum(el, "width", 0);
-      const useHeight = getNum(el, "height", 0);
-      const svgEl = innerDoc.querySelector("svg");
-      const innerWidth = Number.parseFloat(svgEl?.getAttribute("width") || "0") ||
-                         Number.parseFloat(svgEl?.getAttribute("viewBox")?.split(/\s+/)[2] || "0");
-      const innerHeight = Number.parseFloat(svgEl?.getAttribute("height") || "0") ||
-                          Number.parseFloat(svgEl?.getAttribute("viewBox")?.split(/\s+/)[3] || "0");
-      const sx = (useWidth && innerWidth) ? useWidth / innerWidth : 1;
-      const sy = (useHeight && innerHeight) ? useHeight / innerHeight : 1;
-
-      // Offset and scale all inner elements, merge files
-      for (const elem of innerScene.elements) {
-        elem.x = elem.x * sx + ox;
-        elem.y = elem.y * sy + oy;
-        elem.width *= sx;
-        elem.height *= sy;
-        scene.elements.push(elem);
-      }
-      Object.assign(scene.files, innerScene.files);
-
-    } else if (href.startsWith("data:image/")) {
-      // Non-SVG image (PNG, JPEG, etc.) — create an Excalidraw image element
-      const mat = getTransformMatrix(el, groups);
-      const imgX = getNum(el, "x", 0);
-      const imgY = getNum(el, "y", 0);
-      const w = getNum(el, "width", 0);
-      const h = getNum(el, "height", 0);
-
-      if (w === 0 || h === 0) {
-        walk(args, tw.nextNode());
-        return;
-      }
-
-      const offsetM = mat4.fromValues(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, imgX, imgY, 0, 1);
-      const result = mat4.multiply(mat4.create(), mat, offsetM);
-
-      const fileId = randomId();
-      const mimeMatch = /^data:(image\/[^;]+);/.exec(href);
-      const mimeType = mimeMatch ? mimeMatch[1] : "image/png";
-
-      scene.files[fileId] = {
-        mimeType,
-        id: fileId,
-        dataURL: href,
-        created: Date.now(),
-      };
-
-      const img: ExcalidrawImage = {
-        ...createExImage(fileId),
-        x: result[12],
-        y: result[13],
-        width: w,
-        height: h,
-        groupIds: groups.map((g) => g.id),
-      };
-
-      scene.elements.push(img);
+    if (href.startsWith("data:image/")) {
+      handleDataImage(el, href, scene, groups);
     }
 
     walk(args, tw.nextNode());
